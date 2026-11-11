@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAR ZIP 변환기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* 레이아웃: 좁은 한 줄 기둥. 제목, 버튼 하나, 필요한 것만 그 아래에 차례로 나타난다. */
+:root {
+  --bg: #f6f6f4;
+  --ink: #161816;
+  --muted: #6b706b;
+  --line: #dcddd8;
+  --good: #1c7a4c;
+  --bad: #b3261e;
+  --font-display: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-body: "IBM Plex Sans KR", system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131513;
+    --ink: #ecede9;
+    --muted: #979c96;
+    --line: #2e322e;
+    --good: #6fd3a0;
+    --bad: #ff8a80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131513;
+  --ink: #ecede9;
+  --muted: #979c96;
+  --line: #2e322e;
+  --good: #6fd3a0;
+  --bad: #ff8a80;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+[hidden] { display: none !important; }
+
+.page {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 48px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+.work { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.btn {
+  appearance: none;
+  border: 1.5px solid var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 600;
+  min-height: 48px;
+  padding: 10px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+}
+.btn:disabled { opacity: 0.45; cursor: default; }
+.link[id="direct"] { align-self: flex-start; }
+.link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  flex: none;
+}
+.btn:focus-visible, .link:focus-visible, input:focus-visible, summary:focus-visible,
+.file-input:focus-visible ~ .btn {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.file { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.file-row { display: flex; align-items: baseline; gap: 12px; }
+.fname {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.meta { margin: 0; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+
+details { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 0;
+  font-family: var(--font-display);
+  font-size: 13px;
+}
+.list .n { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.list .s { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.more { margin: 0; padding-bottom: 10px; color: var(--muted); font-size: 13px; }
+
+.pw { display: flex; align-items: center; gap: 12px; border-bottom: 1.5px solid var(--ink); }
+.pw input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+.pw input::placeholder { color: var(--muted); }
+.pw input:focus-visible { outline: none; }
+.pw:focus-within { border-bottom-width: 2.5px; }
+
+.progress { display: flex; flex-direction: column; gap: 8px; }
+.bar { height: 2px; background: var(--line); }
+.bar-fill { height: 100%; width: 0%; background: var(--ink); transition: width 0.15s linear; }
+@media (prefers-reduced-motion: reduce) { .bar-fill { transition: none; } }
+.progress-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.progress-line .cur { min-width: 0; overflow-wrap: anywhere; }
+
+.note { margin: 0; font-size: 14px; color: var(--muted); }
+.note.ok { color: var(--good); }
+.note.err { color: var(--bad); }
+.foot { margin: 0; color: var(--muted); font-size: 13px; }
+.other {
+  margin-top: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.out {
+  align-self: flex-start;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.out:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <h1>RAR → ZIP</h1>
+
+  <input class="file-input" type="file" id="file">
+  <label class="btn" for="file" id="pick-btn">RAR 파일 선택</label>
+
+  <section class="work" id="work" hidden>
+    <div class="file">
+      <div class="file-row">
+        <span class="fname" id="picked-name"></span>
+        <label class="link" for="file">변경</label>
+      </div>
+      <p class="meta" id="summary"></p>
+    </div>
+
+    <details id="details" hidden>
+      <summary>파일 목록</summary>
+      <ul class="list" id="list"></ul>
+      <p class="more" id="more" hidden></p>
+    </details>
+
+    <div class="pw" id="pw-row" hidden>
+      <input type="password" id="pw" placeholder="비밀번호" aria-label="비밀번호" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button type="button" class="link" id="pw-toggle" aria-pressed="false">보기</button>
+    </div>
+
+    <button type="button" class="btn" id="unlock" hidden>열기</button>
+    <button type="button" class="btn" id="convert" hidden>ZIP으로 저장</button>
+
+    <div class="progress" id="progress" hidden>
+      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar">
+        <div class="bar-fill" id="bar-fill"></div>
+      </div>
+      <div class="progress-line">
+        <span class="cur" id="cur"></span>
+        <span id="pct">0%</span>
+      </div>
+    </div>
+
+    <button type="button" class="btn" id="save" hidden>ZIP 저장</button>
+    <a class="link" id="direct" hidden>ZIP 직접 내려받기</a>
+  </section>
+
+  <p class="note" id="note" role="status" hidden></p>
+  <p class="foot">파일은 이 기기 안에서만 처리돼요.</p>
+
+  <nav class="other" aria-label="다른 변환">
+    <a class="out" href="https://cloudconvert.com/zip-to-rar">ZIP TO RAR 변환하기 <span aria-hidden="true">↗</span></a>
+    <p class="foot">CloudConvert 사이트로 이동해요. 그쪽은 파일을 서버에 올려서 변환해요.</p>
+  </nav>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var MAX_SIZE = 1536 * 1024 * 1024;
+  var LIST_LIMIT = 150;
+
+  var state = {
+    file: null,
+    zipName: '',
+    zipBlob: null,
+    listed: false,
+    needsPassword: false,
+    busy: false
+  };
+
+  /* ---------- 저장 기능(downloads) ---------- */
+  // 저장 기능은 페이지가 뜬 뒤 늦게 연결될 수 있으니, 한 번 실패해도 누를 때마다 다시 확인한다.
+  var t0 = Date.now();
+  var dlCache = null;
+  var dlWhy = '';
+  function hasRuntime() { return !!(window.claude && typeof window.claude.use === 'function'); }
+  async function getDownloads() {
+    if (dlCache) return dlCache;
+    while (!hasRuntime() && Date.now() - t0 < 12000) {
+      await new Promise(function (r) { setTimeout(r, 150); });
+    }
+    if (!hasRuntime()) { dlWhy = 'no_runtime'; return null; }
+    try {
+      dlCache = await window.claude.use('downloads');
+      dlWhy = dlCache ? '' : 'not_available';
+    } catch (e) {
+      dlCache = null;
+      dlWhy = 'use_failed';
+    }
+    return dlCache;
+  }
+  getDownloads();
+
+  /* ---------- 변환 엔진(워커) ---------- */
+  var worker = null;
+  var mainEngine = null;
+  var engineReady = null;
+
+  function startEngine() {
+    engineReady = new Promise(function (resolve) {
+      var settled = false;
+      function fallback() {
+        if (settled) return;
+        settled = true;
+        try { if (worker) worker.terminate(); } catch (e) {}
+        worker = null;
+        if (window.Rar2ZipEngine) { mainEngine = window.Rar2ZipEngine; resolve(true); return; }
+        var s = document.createElement('script');
+        s.src = 'engine.js';
+        s.onload = function () { mainEngine = window.Rar2ZipEngine || null; resolve(!!mainEngine); };
+        s.onerror = function () { resolve(false); };
+        document.head.appendChild(s);
+      }
+      try {
+        worker = new Worker('engine.js');
+        worker.onmessage = function (e) {
+          if (e.data && e.data.type === 'ready') {
+            if (!settled) { settled = true; resolve(true); }
+            return;
+          }
+          onEngine(e.data);
+        };
+        worker.onerror = function (e) {
+          if (e && e.preventDefault) e.preventDefault();
+          if (!settled) { fallback(); return; }
+          // 변환 도중 워커가 죽는 건 대부분 메모리 부족이다.
+          onEngine({ type: 'error', phase: state.listed ? 'convert' : 'list', code: 'memory' });
+          startEngine();
+        };
+        setTimeout(fallback, 8000);
+      } catch (e) {
+        fallback();
+      }
+    });
+  }
+
+  function send(msg, transfer) {
+    if (worker) worker.postMessage(msg, transfer || []);
+    else if (mainEngine) mainEngine.handle(msg, onEngine);
+  }
+
+  /* ---------- 화면 도우미 ---------- */
+  function fmtSize(n) {
+    if (n < 1024) return n + ' B';
+    var units = ['KB', 'MB', 'GB'];
+    var v = n / 1024, i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[i];
+  }
+  function show(el, on) { el.hidden = !on; }
+  function note(text, kind) {
+    var el = $('note');
+    el.textContent = text || '';
+    el.className = 'note' + (kind ? ' ' + kind : '');
+    show(el, !!text);
+  }
+  function zipNameFor(name) {
+    var base = name.replace(/\.rar$/i, '').replace(/[\\/:*?"<>|]/g, '_').trim();
+    return (base || 'archive') + '.zip';
+  }
+
+  var ERR = {
+    not_rar: 'RAR 파일이 아니에요.',
+    damaged: '파일이 손상돼서 열 수 없어요.',
+    multivolume: '분할 압축(.part1.rar) 파일은 지원하지 않아요.',
+    memory: '메모리가 모자라요. 컴퓨터에서 다시 해 주세요.',
+    bad_password: '비밀번호가 맞지 않아요.',
+    password_needed: '비밀번호를 넣어 주세요.',
+    unknown: '변환하지 못했어요. 파일을 다시 골라 주세요.'
+  };
+
+  function resetAll() {
+    state.zipBlob = null;
+    state.listed = false;
+    state.needsPassword = false;
+    state.busy = false;
+    $('pw').value = '';
+    $('list').textContent = '';
+    $('details').open = false;
+    if (blobUrl) { try { URL.revokeObjectURL(blobUrl); } catch (e) {} blobUrl = null; }
+    $('direct').removeAttribute('href');
+    ['details', 'more', 'pw-row', 'unlock', 'convert', 'progress', 'save', 'direct'].forEach(function (id) {
+      show($(id), false);
+    });
+    $('unlock').disabled = false;
+    $('save').disabled = false;
+    note('');
+  }
+
+  /* ---------- 파일 고르기 ---------- */
+  async function pick(file) {
+    if (!file || state.busy) return;
+    resetAll();
+    send({ type: 'reset' });
+    state.file = file;
+    state.zipName = zipNameFor(file.name);
+    $('picked-name').textContent = file.name;
+    $('summary').textContent = fmtSize(file.size);
+    show($('pick-btn'), false);
+    show($('work'), true);
+
+    if (file.size === 0) { note('빈 파일이에요.', 'err'); return; }
+    if (file.size > MAX_SIZE) { note('1.5 GB가 넘는 파일은 변환할 수 없어요.', 'err'); return; }
+
+    $('summary').textContent = fmtSize(file.size) + ' · 여는 중…';
+    state.busy = true;
+
+    var ok = await engineReady;
+    if (!ok) {
+      state.busy = false;
+      $('summary').textContent = fmtSize(file.size);
+      note('변환 기능을 불러오지 못했어요. 새로 고친 뒤 다시 해 주세요.', 'err');
+      return;
+    }
+    var buf;
+    try {
+      buf = await file.arrayBuffer();
+    } catch (e) {
+      state.busy = false;
+      $('summary').textContent = fmtSize(file.size);
+      note(ERR.memory, 'err');
+      return;
+    }
+    if (state.file !== file) return;
+    send({ type: 'load', buffer: buf }, [buf]);
+  }
+
+  /* ---------- 목록 ---------- */
+  function renderList(entries) {
+    var files = entries.filter(function (e) { return !e.dir; });
+    var total = files.reduce(function (a, e) { return a + e.size; }, 0);
+    $('summary').textContent = files.length
+      ? '파일 ' + files.length.toLocaleString('ko-KR') + '개 · ' + fmtSize(total)
+      : '빈 폴더만 들어 있어요';
+    var ul = $('list');
+    ul.textContent = '';
+    files.slice(0, LIST_LIMIT).forEach(function (e) {
+      var li = document.createElement('li');
+      var n = document.createElement('span');
+      n.className = 'n';
+      n.textContent = e.name;
+      var s = document.createElement('span');
+      s.className = 's';
+      s.textContent = fmtSize(e.size);
+      li.appendChild(n);
+      li.appendChild(s);
+      ul.appendChild(li);
+    });
+    if (files.length > LIST_LIMIT) {
+      $('more').textContent = '외 ' + (files.length - LIST_LIMIT).toLocaleString('ko-KR') + '개';
+      show($('more'), true);
+    }
+    show($('details'), files.length > 0);
+  }
+
+  /* ---------- 변환·저장 ---------- */
+  function startConvert() {
+    if (state.busy || !state.listed) return;
+    var pw = $('pw').value;
+    if (state.needsPassword && !pw) {
+      note(ERR.password_needed, 'err');
+      $('pw').focus();
+      return;
+    }
+    note('');
+    state.busy = true;
+    show($('convert'), false);
+    show($('save'), false);
+    setProgress(0, '준비 중…');
+    show($('progress'), true);
+    send({ type: 'convert', password: pw });
+  }
+
+  function setProgress(ratio, label) {
+    var pct = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+    $('bar-fill').style.width = pct + '%';
+    $('bar').setAttribute('aria-valuenow', String(pct));
+    $('pct').textContent = pct + '%';
+    $('cur').textContent = label;
+  }
+
+  // 저장 기능이 연결되지 않은 화면에서는 브라우저의 일반 내려받기를 시도한다.
+  var blobUrl = null;
+  function directDownload() {
+    var where = dlWhy + (window.top === window.self ? '/top' : '/frame');
+    try {
+      if (!blobUrl) blobUrl = URL.createObjectURL(state.zipBlob);
+      var a = $('direct');
+      a.href = blobUrl;
+      a.download = state.zipName;
+      show(a, true);
+      a.click();
+      note('파일이 안 생기면 위의 직접 내려받기를 눌러 주세요. (' + where + ')');
+    } catch (e) {
+      note('저장하지 못했어요. (' + where + ')', 'err');
+    }
+  }
+
+  async function save() {
+    if (!state.zipBlob) return;
+    $('save').disabled = true;
+    note('저장 준비 중…');
+    var dl = await getDownloads();
+    if (!dl) {
+      $('save').disabled = false;
+      directDownload();
+      return;
+    }
+    try {
+      await dl.save({ filename: state.zipName, data: state.zipBlob });
+      note(state.zipName + ' 저장했어요.', 'ok');
+    } catch (e) {
+      var code = e && e.code;
+      if (code === 'declined') note('저장을 취소했어요.');
+      else if (code === 'rate_limited') note('잠시 뒤 다시 눌러 주세요.');
+      else if (code === 'too_large') note('ZIP이 너무 커서 이 기기에 저장할 수 없어요.', 'err');
+      else if (code === 'extension_not_enabled') note('이 화면에서는 ZIP 저장이 꺼져 있어요. (extension_not_enabled)', 'err');
+      else note('저장하지 못했어요. (' + (code || 'unknown') + ')', 'err');
+    }
+    $('save').disabled = false;
+  }
+
+  /* ---------- 엔진 응답 ---------- */
+  function onEngine(m) {
+    if (!m) return;
+    if (m.type === 'listed') {
+      state.busy = false;
+      state.listed = true;
+      state.needsPassword = !!m.encrypted || !!m.headerEncrypted;
+      note('');
+      renderList(m.entries);
+      show($('unlock'), false);
+      show($('pw-row'), state.needsPassword);
+      show($('convert'), true);
+      return;
+    }
+    if (m.type === 'progress') {
+      var ratio = m.total > 0 ? m.done / m.total : m.index / Math.max(1, m.count);
+      setProgress(ratio, m.index + '/' + m.count);
+      return;
+    }
+    if (m.type === 'done') {
+      state.busy = false;
+      state.zipBlob = m.blob;
+      show($('progress'), false);
+      show($('save'), true);
+      save();
+      return;
+    }
+    if (m.type === 'error') {
+      state.busy = false;
+      var text = ERR[m.code] || ERR.unknown;
+      var locked = m.code === 'password_needed' || m.code === 'bad_password';
+      if (m.phase === 'list') {
+        $('unlock').disabled = false;
+        $('summary').textContent = fmtSize(state.file.size);
+        if (locked) {
+          // 목록부터 잠긴 파일: 비밀번호를 받아 다시 연다.
+          state.needsPassword = true;
+          show($('pw-row'), true);
+          show($('unlock'), true);
+          note(m.code === 'bad_password' ? text : '비밀번호가 걸린 파일이에요.', m.code === 'bad_password' ? 'err' : '');
+          return;
+        }
+        note(text, 'err');
+        return;
+      }
+      show($('progress'), false);
+      show($('convert'), true);
+      if (locked) {
+        state.needsPassword = true;
+        show($('pw-row'), true);
+        $('pw').focus();
+      }
+      note(text, 'err');
+    }
+  }
+
+  /* ---------- 이벤트 ---------- */
+  $('file').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    pick(f);
+  });
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function (t) {
+    document.addEventListener(t, function (e) { e.preventDefault(); });
+  });
+  document.addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    pick(f);
+  });
+  $('convert').addEventListener('click', startConvert);
+  $('save').addEventListener('click', save);
+  $('unlock').addEventListener('click', function () {
+    var pw = $('pw').value;
+    if (!pw) { note(ERR.password_needed, 'err'); $('pw').focus(); return; }
+    if (state.busy) return;
+    state.busy = true;
+    $('unlock').disabled = true;
+    note('');
+    send({ type: 'list', password: pw });
+  });
+  $('pw').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (!$('unlock').hidden) $('unlock').click();
+    else if (!$('convert').hidden) $('convert').click();
+  });
+  $('pw-toggle').addEventListener('click', function () {
+    var showing = $('pw').type === 'text';
+    $('pw').type = showing ? 'password' : 'text';
+    $('pw-toggle').textContent = showing ? '보기' : '숨기기';
+    $('pw-toggle').setAttribute('aria-pressed', String(!showing));
+  });
+
+  startEngine();
+})();
+</script>
+</body>
+</html>
